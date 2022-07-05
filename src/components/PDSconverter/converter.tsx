@@ -4,7 +4,7 @@ import { Spacing, ImageView } from 'pds-dev-kit-web';
 import * as PDS from 'pds-dev-kit-web';
 import ErrorBoundary from './ErrorBoundary';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
-// import loadDocument from './getStringKey';
+import Papa from 'papaparse';
 
 const defaultComponent = {
   pdsName: 'ImageView',
@@ -20,26 +20,22 @@ const defaultComponent = {
 function converter() {
   const [prefix, setPrefix] = useState('D_');
   const [result, setResult] = useState('');
-  const [doc, setDoc] = useState<any>(null);
+  const [csvData, setCsvData] = useState<any>(null);
 
   const [component, setComponent] = useState<{ pdsName: string; props: any }>(defaultComponent);
 
-  console.log(doc);
   useEffect(() => {
-    getSheet().then((res) => setDoc(res));
-
-    async function getSheet() {
-      const SPREADSHEET_API_KEY = 'AIzaSyC73Lp5v7FjjEgD2jgysEfAVig1Iz3cQ50';
-      const SPREADSHEET_DOCUMENT_KEY = '1sdLVn7f2shaT4Lzno-mBpF3kgNOqUUAfNIzaFqLKBe0';
-
-      const doc = new GoogleSpreadsheet(SPREADSHEET_DOCUMENT_KEY);
-
-      // await doc.useApiKey(SPREADSHEET_API_KEY);
-      // await doc.loadInfo();
-
-      return doc;
+    if (csvData) {
+      console.log(csvData);
+      Papa.parse(csvData, {
+        header: true,
+        download: true,
+        complete: (data) => {
+          console.log(data);
+        },
+      });
     }
-  }, []);
+  }, [csvData]);
 
   function parser(value: string) {
     const splitted = value.split('\n');
@@ -90,6 +86,12 @@ function converter() {
     setPrefix(e.target.value);
   }
 
+  function handleChangeCSV(e: ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      setCsvData(e.target.files[0]);
+    }
+  }
+
   return (
     <S_Converter>
       <div>
@@ -105,6 +107,10 @@ function converter() {
             NONE
           </option>
         </select>
+      </div>
+      <div>
+        String-key:
+        <input type="file" onChange={handleChangeCSV} />
       </div>
       <S_Main>
         <S_CopyArea placeholder="이곳에 붙여넣으세요." onChange={onChangeCopyArea} />
