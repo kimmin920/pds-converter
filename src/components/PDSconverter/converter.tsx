@@ -21,17 +21,31 @@ function converter() {
   const [prefix, setPrefix] = useState('D_');
   const [result, setResult] = useState('');
   const [csvData, setCsvData] = useState<any>(null);
+  const [stringKeyPair, setStringKeyPair] = useState<any>({});
 
   const [component, setComponent] = useState<{ pdsName: string; props: any }>(defaultComponent);
 
   useEffect(() => {
     if (csvData) {
-      console.log(csvData);
       Papa.parse(csvData, {
         header: true,
         download: true,
         complete: (data) => {
-          console.log(data);
+          setStringKeyPair(
+            data.data.reduce((acc: Record<string, string>, cur: Record<any, unknown>) => {
+              const parsedValue = cur['KR'].replaceAll('"', '').slice(0, -1);
+
+              const split = parsedValue.split(':');
+
+              const parsedKey = split[0].trim();
+              const parsedValuee = split[1].trim();
+
+              return {
+                ...acc,
+                [parsedKey]: `t('${parsedKey}', '${parsedValuee}')`,
+              };
+            }, {})
+          );
         },
       });
     }
@@ -55,6 +69,12 @@ function converter() {
 
       if (!isNaN(propValue)) {
         return prev + '\n' + ' ' + `${propKey}={${propValue}}`;
+      }
+
+      if (typeof propValue === 'string') {
+        if (propValue.startsWith('str') && stringKeyPair[propValue]) {
+          return prev + '\n' + ' ' + `${propKey}={${stringKeyPair[propValue]}}`;
+        }
       }
 
       return prev + '\n' + ' ' + `${propKey}='${propValue}'`;
