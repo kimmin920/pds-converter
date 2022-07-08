@@ -5,6 +5,7 @@ import * as PDS from 'pds-dev-kit-web';
 import ErrorBoundary from './ErrorBoundary';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import Papa from 'papaparse';
+import { convertComponentData } from './helpers';
 
 const defaultComponent = {
   pdsName: 'ImageView',
@@ -19,11 +20,14 @@ const defaultComponent = {
 
 function converter() {
   const [prefix, setPrefix] = useState('D_');
-  const [result, setResult] = useState('');
+  const [result, setResult] = useState([]);
   const [csvData, setCsvData] = useState<any>(null);
   const [stringKeyPair, setStringKeyPair] = useState<any>({});
+  const [showPreview, setShowPreview] = useState(false);
 
-  const [component, setComponent] = useState<{ pdsName: string; props: any }>(defaultComponent);
+  function toggleShowPreview() {
+    setShowPreview((prev) => !prev);
+  }
 
   useEffect(() => {
     if (csvData) {
@@ -53,54 +57,44 @@ function converter() {
 
   function parser(value: string) {
     const splitted = value.split('\n');
-    const propsArray = splitted.filter((each: string) => each.includes(':'));
-    const pdsName = splitted[0];
-
-    const props = propsArray.reduce((prev: any, curr: any) => {
-      const split = curr.split(':');
-      const key = split[0].trim();
-      const value = split[1].trim();
-
-      return { ...prev, [key]: value };
-    }, {});
-
-    const convertedProps = Object.entries(props).reduce((prev: any, curr: any) => {
-      const [propKey, propValue] = curr;
-
-      if (!isNaN(propValue)) {
-        return prev + '\n' + ' ' + `${propKey}={${propValue}}`;
+    const structuredByComponent = splitted.reduce((acc: any, cur: any) => {
+      if (cur === '') {
+        return acc;
       }
 
-      if (typeof propValue === 'string') {
-        if (propValue.startsWith('str') && stringKeyPair[propValue]) {
-          return prev + '\n' + ' ' + `${propKey}={${stringKeyPair[propValue]}}`;
-        }
+      if (cur.includes(':')) {
+        const lastObj = acc[acc.length - 1];
+
+        const split = cur.split(':');
+        const key = split[0].trim();
+        const value = split[1].trim();
+
+        const newProps = { ...lastObj.props, [key]: value };
+
+        acc.splice(acc.length - 1, 1, { pdsName: lastObj.pdsName, props: newProps });
+
+        return acc;
       }
 
-      return prev + '\n' + ' ' + `${propKey}='${propValue}'`;
-    }, '');
+      //NOTE: its component name
 
-    const hasPrefix = Object.keys(PDS).includes(prefix + pdsName);
+      return acc.concat({ pdsName: cur, props: {} });
+    }, []);
 
-    if (hasPrefix) {
-      setComponent({ pdsName: `${prefix}${pdsName}`, props });
-      return `<${prefix}${pdsName} ${convertedProps} \n/>`;
-    }
-
-    setComponent({ pdsName, props });
-    return `<${pdsName} ${convertedProps} \n/>`;
+    return structuredByComponent.map((each: any) =>
+      convertComponentData(prefix, each, stringKeyPair)
+    );
   }
 
   function onChangeCopyArea(e: ChangeEvent<HTMLTextAreaElement>) {
     try {
       const parsedResult = parser(e.target.value);
+      console.log(parsedResult);
       setResult(parsedResult);
     } catch (e) {
       console.error(e);
     }
   }
-
-  const Component = PDS[component.pdsName];
 
   function handleChangeSelect(e: ChangeEvent<HTMLSelectElement>) {
     setPrefix(e.target.value);
@@ -109,6 +103,19 @@ function converter() {
   function handleChangeCSV(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files) {
       setCsvData(e.target.files[0]);
+    }
+  }
+
+  async function onClickCopy() {
+    const codes = document.getElementById('display-code')?.innerText;
+
+    if (codes) {
+      try {
+        await navigator.clipboard.writeText(codes);
+        alert('Oh, copied, you only do copy-and-paste salary roopang!');
+      } catch (error) {
+        alert('sorry, copy failed. do it your self ^__^');
+      }
     }
   }
 
@@ -134,42 +141,73 @@ function converter() {
       </div>
       <S_Main>
         <S_CopyArea placeholder="이곳에 붙여넣으세요." onChange={onChangeCopyArea} />
-        <S_resultArea>
-          <pre>{result}</pre>
+        <button type="button" onClick={onClickCopy}>
+          COPY ALL!
+        </button>
+        <S_resultArea id="display-code">
+          {result.map((each: any) => {
+            return <pre>{each.displayCode}</pre>;
+          })}
         </S_resultArea>
       </S_Main>
 
-      <Viewer>
-        <ErrorBoundary
-          fallbackView={<div>에러가 났어요! 컴포넌트를 수정하고 다시 시도해주세요!</div>}
-          resetKeys={[component]}
-        >
-          <div>
-            <div>여기는 라이트톤!</div>
-            <ThemeProvider theme={PDS.customTheme('LIGHT')}>
-              <S_Viewer>
-                <Component {...component.props} />
-              </S_Viewer>
-            </ThemeProvider>
-          </div>
+      <button type="button" onClick={toggleShowPreview}>
+        미리보기 내놔
+      </button>
+      {showPreview && (
+        <Viewer>
+          <ErrorBoundary
+            fallbackView={<div>에러가 났어요! 컴포넌트를 수정하고 다시 시도해주세요!</div>}
+            resetKeys={[result]}
+          >
+            {result.map((each: any) => {
+              if (PDS[each.pdsName]) {
+                const Component = PDS[each.pdsName];
 
-          <div>
-            <div>여기는 다크톤!</div>
-            <ThemeProvider theme={PDS.customTheme('DARK')}>
-              <S_Viewer>
-                <Component {...component.props} />
-              </S_Viewer>
-            </ThemeProvider>
-          </div>
-        </ErrorBoundary>
-      </Viewer>
+                return (
+                  <S_EachComponentView>
+                    <ErrorBoundary
+                      fallbackView={
+                        <div>에러가 났어요! 컴포넌트를 수정하고 다시 시도해주세요!</div>
+                      }
+                      resetKeys={[result]}
+                    >
+                      <div>여기는 라이트톤!</div>
+                      <ThemeProvider theme={PDS.customTheme('LIGHT')}>
+                        <S_Viewer>
+                          <Component {...each.props} />
+                        </S_Viewer>
+                      </ThemeProvider>
+
+                      <ThemeProvider theme={PDS.customTheme('DARK')}>
+                        <S_Viewer>
+                          <Component {...each.props} />
+                        </S_Viewer>
+                      </ThemeProvider>
+                    </ErrorBoundary>
+                  </S_EachComponentView>
+                );
+              }
+
+              return (
+                <S_EachComponentView>this component is error: {each.pdsName}</S_EachComponentView>
+              );
+            })}
+          </ErrorBoundary>
+        </Viewer>
+      )}
     </S_Converter>
   );
 }
 
+const S_EachComponentView = styled.div`
+  display: flex;
+  margin-bottom: 20px;
+`;
+
 const Viewer = styled.div`
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
 `;
 
 const S_Main = styled.div`
@@ -191,8 +229,10 @@ const S_Viewer = styled.div`
 
 const S_resultArea = styled.div`
   min-width: 200px;
-  height: 50%;
+  overflow-y: scroll;
   border: 1px solid black;
+  color: #f1eaea;
+  background-color: #363030;
 `;
 
 const S_CopyArea = styled.textarea`
